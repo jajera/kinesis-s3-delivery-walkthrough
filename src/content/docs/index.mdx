@@ -27,21 +27,7 @@ Managed S3 general purpose delivery removes that middle tier: configure a
 buffers, batches, and writes objects for you. No consumer compute to provision,
 and delivery does not consume the stream's read throughput.
 
-```mermaid
-flowchart TB
-  subgraph before["Before — you run the middle"]
-    direction TB
-    BP[Producers] --> BK[Kinesis Data Streams]
-    BK --> BM["Lambda / KCL app / other glue"]
-    BM --> BS[S3 bucket]
-  end
-  subgraph after["Now — managed delivery"]
-    direction TB
-    AP[Producers] --> AK[Kinesis Data Streams On-Demand]
-    AK --> AC[Delivery channel]
-    AC --> AS[S3 general purpose bucket]
-  end
-```
+![Before vs now: self-managed Lambda/KCL glue into S3 versus a managed delivery channel on On-Demand Kinesis Data Streams](../../assets/diagrams/before-after-delivery.svg)
 
 | | Before | This lab |
 | --- | --- | --- |
@@ -49,10 +35,6 @@ flowchart TB
 | Who scales and retries | You | Kinesis Data Streams |
 | Stream read impact | Consumer uses shard throughput / EFO | Delivery does not consume read throughput |
 | Transform | Whatever you build | Source format only (no transform) |
-
-This page is the pain-point framing only — the lab does not recreate the
-self-managed path. Firehose remains a different product when you need its
-destinations or conversion features.
 
 ## What you will do
 
@@ -75,29 +57,13 @@ destinations or conversion features.
   </Card>
 </CardGrid>
 
-```text
-EventBridge → Lambda PutRecord  (default)
-amazon-kinesis-replay           (optional)
-        │
-        ▼
-  Kinesis stream (On-Demand)
-        │
-        ▼
-  Delivery channel  ──►  S3 general purpose bucket
-        │
-        └── optional DLQ / error prefix
-```
+![Lab architecture: EventBridge and Lambda heartbeat plus optional replay into On-Demand Kinesis, delivery channel to S3 with optional DLQ](../../assets/diagrams/lab-architecture.svg)
 
 | Expectation | Notes |
 | ----------- | ----- |
 | Lab length | Target 15–20 minutes (measured in the evidence pass) |
 | First S3 object | At least `DataFreshnessInSeconds` after produce (default 300s) |
 | Cost | Billable until channel and objects are deleted |
-
-<Aside type="note" title="Evidence TODO">
-  Replace the ASCII sketch with a draw.io architecture diagram using official AWS icons from
-  https://jajera.github.io/aws-icons/
-</Aside>
 
 <Aside type="caution">
   This lab creates billable AWS resources. An active channel keeps billing until you delete it.
