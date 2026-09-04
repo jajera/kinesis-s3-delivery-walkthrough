@@ -1,0 +1,34 @@
+# Astro / Node
+node_modules/
+dist/
+.astro/
+.output/
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.*
+!.env.example
+!.envrc
+
+# Lab artifacts — never commit account-specific state or generated policy JSON
+demo.env
+*.jar
+.lab-state.json
+.lab/
+
+# Python bytecode and virtualenv from Kiro hooks and capture scripts
+__pycache__/
+*.py[cod]
+.venv/
+
+# Demo capture intermediates
+docs/demo/captures/_build/
+
+# Local agent skills (not part of the published walkthrough)
+.agents/
+
+# OS / editor
+.DS_Store
+Thumbs.db

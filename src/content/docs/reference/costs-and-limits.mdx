@@ -1,0 +1,61 @@
+---
+title: Costs and limits
+description: Pricing links, quotas, immutable channel fields, and lab constraints.
+sidebar:
+  label: Costs and limits
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+
+<Checklist
+  id="ref-costs"
+  items={[
+    "Know what keeps billing until deleted",
+  ]}
+/>
+
+## Overview
+
+Do not hardcode per-GB rates — they age. Link the pricing page. An active channel keeps billing
+until deleted; delivered objects keep costing S3 storage until removed.
+
+## Billing reminders
+
+| Resource | Stops billing when |
+| -------- | ------------------ |
+| Producer schedule / Lambda | Deleted (tiny while running) |
+| Delivery channel | Deleted |
+| Stream | Deleted |
+| S3 objects | Deleted / lifecycle expired |
+| IAM roles | Free, but delete to avoid leftover permissions |
+
+The always-on heartbeat is intentionally small (128 MB Lambda, `rate(5 minutes)` by default).
+Stream + channel are the larger ongoing costs — tear them down when you walk away. See
+[Lambda pricing](https://aws.amazon.com/lambda/pricing/) and
+[EventBridge pricing](https://aws.amazon.com/eventbridge/pricing/).
+
+## Quotas and constraints
+
+| Constraint | Detail |
+| ---------- | ------ |
+| Capacity mode | On-Demand only |
+| Freshness | 300–900 seconds |
+| Backfill | None |
+| Deliveries per stream | Two max (one S3 general purpose, one streaming tables) |
+| Streams per channel | One |
+| Mutable after create | `DataFreshnessInSeconds`, `LoggingConfiguration` only |
+| Control plane | 5 TPS per account per Region for CreateChannel |
+
+<Aside type="danger">
+  Leaving a channel ACTIVE overnight is the usual surprise bill. Tear down before you walk away.
+</Aside>
+
+## References
+
+- [Pricing](https://aws.amazon.com/kinesis/data-streams/pricing/)
+- [Lambda pricing](https://aws.amazon.com/lambda/pricing/)
+- [EventBridge pricing](https://aws.amazon.com/eventbridge/pricing/)
+- [Quotas and constraints](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-quotas.html)
+- [FAQs](https://aws.amazon.com/kinesis/data-streams/faqs/)
+- [Data delivery overview](https://docs.aws.amazon.com/streams/latest/dev/data-delivery.html)

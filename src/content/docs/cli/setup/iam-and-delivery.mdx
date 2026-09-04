@@ -1,0 +1,263 @@
+---
+title: IAM and delivery
+description: Create the service execution role and the S3 general purpose delivery channel, then wait for ACTIVE.
+sidebar:
+  label: IAM and delivery
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+import Tooltip from "@/components/Tooltip.astro";
+
+<Checklist
+  id="setup-iam-delivery"
+  items={[
+    "Service execution role trusts kinesis.amazonaws.com",
+    "S3 permission policy attached",
+    "Channel reaches ACTIVE",
+  ]}
+/>
+
+## Overview
+
+The calling principal needs `kinesis:CreateChannel` and `kinesis:AssociateStreamsWithChannel` on
+the stream ARN, plus `iam:PassRole` on the <Tooltip term="service-execution-role" />.
+`CreateChannel` is asynchronous: `CREATING` → `ACTIVE`. Poll with `describe-channel`.
+
+<Aside type="danger">
+  An active channel continues to process records and incurs delivery charges until you delete it.
+</Aside>
+
+## Steps
+
+Reuse the same `LAB_SUFFIX` as the stream and bucket. Run commands from the **repo root**.
+Generated JSON goes under `.lab/` (gitignored — same folder `demo.sh` uses).
+
+```bash frame="terminal"
+export AWS_PROFILE=sandbox
+export AWS_REGION=ap-southeast-2
+export LAB_SUFFIX=${LAB_SUFFIX:-$(date +%Y%m%d%H%M%S)}
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export STREAM_NAME="kds-s3-demo-${LAB_SUFFIX}-stream"
+export BUCKET_NAME="kds-s3-demo-${LAB_SUFFIX}-${ACCOUNT_ID}"
+export ROLE_NAME="kds-s3-demo-${LAB_SUFFIX}-role"
+export CHANNEL_NAME="kds-s3-demo-${LAB_SUFFIX}-channel"
+export STREAM_ARN="arn:aws:kinesis:${AWS_REGION}:${ACCOUNT_ID}:stream/${STREAM_NAME}"
+export BUCKET_ARN="arn:aws:s3:::${BUCKET_NAME}"
+export ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+mkdir -p .lab
+```
+
+<Steps>
+
+1. Write the trust policy (confused-deputy guards included).
+
+   ```bash frame="terminal"
+   cat > .lab/trust-policy.json <<EOF
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Principal": { "Service": "kinesis.amazonaws.com" },
+         "Action": "sts:AssumeRole",
+         "Condition": {
+           "StringEquals": { "aws:SourceAccount": "${ACCOUNT_ID}" },
+           "ArnLike": {
+             "aws:SourceArn": "arn:aws:kinesis:${AWS_REGION}:${ACCOUNT_ID}:channel/*"
+           }
+         }
+       }
+     ]
+   }
+   EOF
+   ```
+
+2. Write the S3 permission policy for general purpose delivery.
+
+   ```bash frame="terminal"
+   cat > .lab/permissions-policy.json <<EOF
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Sid": "DeliveryBucketList",
+         "Effect": "Allow",
+         "Action": ["s3:ListBucket", "s3:ListBucketMultipartUploads"],
+         "Resource": [
+           "arn:aws:s3:::${BUCKET_NAME}",
+           "arn:aws:s3:::${BUCKET_NAME}/*"
+         ]
+       },
+       {
+         "Sid": "DeliveryBucketWrite",
+         "Effect": "Allow",
+         "Action": [
+           "s3:PutObject",
+           "s3:CreateMultipartUpload",
+           "s3:UploadPart",
+           "s3:CompleteMultipartUpload",
+           "s3:ListMultipartUploads",
+           "s3:ListMultipartUploadParts"
+         ],
+         "Resource": ["arn:aws:s3:::${BUCKET_NAME}/*"]
+       }
+     ]
+   }
+   EOF
+   ```
+
+3. Create the role and attach the inline policy.
+
+   ```bash frame="terminal"
+   aws iam create-role \
+     --role-name "$ROLE_NAME" \
+     --assume-role-policy-document file://.lab/trust-policy.json \
+     --tags Key=Project,Value=kinesis-s3-delivery-walkthrough
+
+   aws iam put-role-policy \
+     --role-name "$ROLE_NAME" \
+     --policy-name "${ROLE_NAME}-s3" \
+     --policy-document file://.lab/permissions-policy.json
+   ```
+
+   Looks like (`put-role-policy` returns no body):
+
+   ```json
+   {
+     "Role": {
+       "Path": "/",
+       "RoleName": "kds-s3-demo-LAB_SUFFIX-role",
+       "Arn": "arn:aws:iam::ACCOUNT_ID:role/kds-s3-demo-LAB_SUFFIX-role",
+       "Tags": [
+         {
+           "Key": "Project",
+           "Value": "kinesis-s3-delivery-walkthrough"
+         }
+       ]
+     }
+   }
+   ```
+
+   Wait ~10 seconds so IAM is consistent before `create-channel` (avoids `PassRole` races).
+
+4. Write the S3 destination config and stream association to files. The
+   <Tooltip term="output-key-template" /> uses `!{...}` placeholders — shell quoting mangles them
+   if you pass the JSON inline. With `CompressionType` set to `GZIP`, the template **must** end
+   with `!{extension}`.
+
+   ```bash frame="terminal"
+   cat > .lab/s3-destination.json <<EOF
+   {
+     "DataFreshnessInSeconds": 300,
+     "StorageConfiguration": {
+       "BucketARN": "${BUCKET_ARN}",
+       "ExpectedBucketOwner": "${ACCOUNT_ID}",
+       "StorageClass": "STANDARD",
+       "CompressionType": "GZIP",
+       "OutputKeyTemplate": "data/!{channel-name}/!{yyyy}/!{MM}/!{dd}/!{HH}/!{channel-id}-!{mm}!{extension}"
+     }
+   }
+   EOF
+
+   cat > .lab/stream-config.json <<EOF
+   [
+     {
+       "StreamARN": "${STREAM_ARN}",
+       "RecordConfiguration": { "RecordFormatType": "BYTE_ARRAY" }
+     }
+   ]
+   EOF
+   ```
+
+5. Create the channel.
+
+   ```bash frame="terminal"
+   aws kinesis create-channel \
+     --channel-name "$CHANNEL_NAME" \
+     --service-execution-role-arn "$ROLE_ARN" \
+     --stream-configuration-list file://.lab/stream-config.json \
+     --s3-destination-configuration file://.lab/s3-destination.json \
+     --tags Project=kinesis-s3-delivery-walkthrough
+   ```
+
+   Looks like (verified in `ap-southeast-2`, CLI **2.36.38** — status starts as `CREATING`):
+
+   ```json
+   {
+     "ChannelDescription": {
+       "ChannelName": "kds-s3-demo-LAB_SUFFIX-channel",
+       "ChannelARN": "arn:aws:kinesis:ap-southeast-2:ACCOUNT_ID:channel/CHANNEL_ID",
+       "ChannelId": "CHANNEL_ID",
+       "ChannelStatus": "CREATING",
+       "ServiceExecutionRoleARN": "arn:aws:iam::ACCOUNT_ID:role/kds-s3-demo-LAB_SUFFIX-role",
+       "S3DestinationConfiguration": {
+         "DataFreshnessInSeconds": 300,
+         "DeadLetterQueueS3Configuration": {
+           "BucketARN": "arn:aws:s3:::kds-s3-demo-LAB_SUFFIX-ACCOUNT_ID",
+           "ExpectedBucketOwner": "ACCOUNT_ID",
+           "ErrorOutputPrefix": "kinesis-channel/errors/kds-s3-demo-LAB_SUFFIX-channel/CHANNEL_ID/"
+         },
+         "StorageConfiguration": {
+           "BucketARN": "arn:aws:s3:::kds-s3-demo-LAB_SUFFIX-ACCOUNT_ID",
+           "CompressionType": "GZIP",
+           "StorageClass": "STANDARD"
+         }
+       }
+     }
+   }
+   ```
+
+   <Aside type="note">
+     When you omit a dead-letter queue, the service defaults DLQ to the destination bucket under
+     <code>kinesis-channel/errors/…</code>. Capture <code>ChannelARN</code> from the response —
+     the ARN uses the channel id, not the channel name.
+   </Aside>
+
+   Or run the full stack:
+
+   ```bash frame="terminal"
+   ./scripts/demo.sh up
+   ```
+
+6. Capture `ChannelARN` from the create response, then poll until `ACTIVE`.
+
+   ```bash frame="terminal"
+   # paste ChannelARN from the create-channel response
+   export CHANNEL_ARN="arn:aws:kinesis:${AWS_REGION}:${ACCOUNT_ID}:channel/CHANNEL_ID"
+
+   aws kinesis describe-channel \
+     --channel-arn "$CHANNEL_ARN" \
+     --query 'ChannelDescription.{Status:ChannelStatus,Name:ChannelName,Id:ChannelId,Arn:ChannelARN}'
+   ```
+
+   Looks like (first poll ~13 s after create in this lab — often already `ACTIVE`):
+
+   ```json
+   {
+     "Status": "ACTIVE",
+     "Name": "kds-s3-demo-LAB_SUFFIX-channel",
+     "Id": "CHANNEL_ID",
+     "Arn": "arn:aws:kinesis:ap-southeast-2:ACCOUNT_ID:channel/CHANNEL_ID"
+   }
+   ```
+
+</Steps>
+
+## Verify
+
+| Status | Meaning |
+| ------ | ------- |
+| `CREATING` | Provisioning — keep polling |
+| `ACTIVE` | Ready; start the producer now |
+| `FAILED` | Not recoverable — fix IAM/bucket, delete, recreate |
+
+Verified: create returned `CREATING`; `describe-channel` showed `ACTIVE` within ~15 s
+(`ap-southeast-2`, CLI **2.36.38**).
+
+## References
+
+- [Create an Amazon S3 delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-create.html)
+- [IAM permissions for data delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-iam.html)
+- [Output key template](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-key-template.html)
+- [create-channel CLI](https://docs.aws.amazon.com/cli/latest/reference/kinesis/create-channel.html)

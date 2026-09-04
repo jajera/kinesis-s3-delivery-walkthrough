@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Guard AWS mutations",
+      "description": "Blocks mutating AWS CLI and IaC commands from shell tools while authoring. Read-only calls pass. The operator opts in with KDS_LAB_ALLOW_AWS=1. See .kiro/steering/lab-safety.md.",
+      "trigger": "PreToolUse",
+      "matcher": "(?i)(bash|shell|terminal|command|execute|process)",
+      "action": {
+        "type": "command",
+        "command": "python3 .kiro/hooks/guard-aws-mutations.py"
+      },
+      "timeout": 10
+    }
+  ]
+}

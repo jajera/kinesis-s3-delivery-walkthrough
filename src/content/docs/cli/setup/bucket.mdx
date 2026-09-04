@@ -1,0 +1,120 @@
+---
+title: Create the bucket
+description: Create the same-Region general purpose S3 destination bucket for delivery.
+sidebar:
+  label: Create the bucket
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+import Tooltip from "@/components/Tooltip.astro";
+
+<Checklist
+  id="setup-bucket"
+  items={[
+    "Destination bucket exists in the stream Region",
+    "Bucket tagged with the lab Project tag",
+  ]}
+/>
+
+## Overview
+
+The destination must be a **general purpose** S3 bucket in the **same Region** as the stream.
+Cross-account delivery is supported; cross-Region is not. A dead-letter queue is optional — if
+you omit it, failed records default to the destination bucket under an error prefix.
+
+<Aside type="danger">
+  S3 storage is billable for every delivered object until you empty and delete the bucket.
+</Aside>
+
+## Steps
+
+<Steps>
+
+1. Create the bucket in the lab Region and tag it.
+
+   Reuse the same `LAB_SUFFIX` as the stream (or let the shell generate one if you start here).
+
+   ```bash frame="terminal"
+   export AWS_PROFILE=sandbox
+   export AWS_REGION=ap-southeast-2
+   export LAB_SUFFIX=${LAB_SUFFIX:-$(date +%Y%m%d%H%M%S)}
+   export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+   export BUCKET_NAME="kds-s3-demo-${LAB_SUFFIX}-${ACCOUNT_ID}"
+
+   aws s3api create-bucket \
+     --bucket "$BUCKET_NAME" \
+     --create-bucket-configuration "LocationConstraint=${AWS_REGION}"
+
+   aws s3api put-bucket-tagging \
+     --bucket "$BUCKET_NAME" \
+     --tagging 'TagSet=[{Key=Project,Value=kinesis-s3-delivery-walkthrough}]'
+   ```
+
+   Looks like (verified in `ap-southeast-2`, CLI **2.36.38** — tagging returns no body):
+
+   ```json
+   {
+     "Location": "<bucket endpoint for LAB_SUFFIX / ACCOUNT_ID>",
+     "BucketArn": "arn:aws:s3:::kds-s3-demo-LAB_SUFFIX-ACCOUNT_ID"
+   }
+   ```
+
+   `./scripts/demo.sh up` creates this bucket as part of the full stack (same `LAB_SUFFIX`
+   naming).
+
+2. Note the bucket ARN for the channel configuration.
+
+   ```bash frame="terminal"
+   echo "arn:aws:s3:::${BUCKET_NAME}"
+   ```
+
+   Looks like:
+
+   ```text
+   arn:aws:s3:::kds-s3-demo-LAB_SUFFIX-ACCOUNT_ID
+   ```
+
+</Steps>
+
+## Verify
+
+```bash frame="terminal"
+aws s3api get-bucket-location --bucket "$BUCKET_NAME"
+aws s3api get-bucket-tagging --bucket "$BUCKET_NAME"
+```
+
+Looks like:
+
+```json
+{
+  "LocationConstraint": "ap-southeast-2"
+}
+```
+
+```json
+{
+  "TagSet": [
+    {
+      "Key": "Project",
+      "Value": "kinesis-s3-delivery-walkthrough"
+    }
+  ]
+}
+```
+
+| Check | Expect |
+| ----- | ------ |
+| Location | lab Region (`ap-southeast-2` by default) |
+| Tag | `Project=kinesis-s3-delivery-walkthrough` |
+
+<Aside type="tip">
+  The lab uses default SSE-S3 so the service role can omit KMS statements. Add customer-managed
+  KMS later if you need it — see the IAM page for the extra statements.
+</Aside>
+
+## References
+
+- [S3 general purpose delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3.html)
+- [Getting started](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-getting-started.html)
+- [IAM permissions for data delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-iam.html)

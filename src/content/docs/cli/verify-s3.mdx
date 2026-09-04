@@ -1,0 +1,154 @@
+---
+title: Verify in S3
+description: Wait for the freshness window, list delivered objects, read a record, and check DeliveryToS3 metrics.
+sidebar:
+  label: Verify in S3
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+import Tooltip from "@/components/Tooltip.astro";
+
+<Checklist
+  id="cli-verify-s3"
+  items={[
+    "Waited at least DataFreshnessInSeconds",
+    "Objects listed under the output key template",
+    "DeliveryToS3 metrics visible",
+  ]}
+/>
+
+## Overview
+
+`DataFreshnessInSeconds` accepts **300–900** (default **300**). Objects take minutes to appear.
+Metrics land in the `AWS/Kinesis` namespace with the `DeliveryToS3.` prefix. For
+`get-metric-statistics`, pass **all three** dimensions — `StreamName`, `ChannelName`, and
+`ChannelId` — or the query returns empty datapoints.
+
+## Steps
+
+Reuse the same exports as [Produce records](/cli/produce/) (`BUCKET_NAME`, `STREAM_NAME`,
+`CHANNEL_NAME`). Capture `CHANNEL_ID` from `describe-channel` if you do not already have it:
+
+```bash frame="terminal"
+export CHANNEL_ID=$(aws kinesis describe-channel \
+  --channel-arn "$CHANNEL_ARN" \
+  --query 'ChannelDescription.ChannelId' \
+  --output text)
+```
+
+<Steps>
+
+1. Wait at least the configured freshness window after producing records.
+
+   With the lab default (**300** s) and the always-on heartbeat, the first GZIP objects showed
+   up about five minutes after puts started (verified in `ap-southeast-2`, CLI **2.36.38**).
+
+2. List delivered objects under the lab prefix.
+
+   ```bash frame="terminal"
+   aws s3 ls "s3://${BUCKET_NAME}/data/" --recursive
+   ```
+
+   Or:
+
+   ```bash frame="terminal"
+   ./scripts/demo.sh status
+   ```
+
+   Looks like (verified — time-prefixed keys match the output key template; sizes are small
+   heartbeat payloads):
+
+   ```text
+   2026-09-03 22:31:59         75 data/kds-s3-demo-LAB_SUFFIX-channel/2026/09/03/10/CHANNEL_ID-29-000000000000000000-000000-86862066acb.gz
+   2026-09-03 22:31:59         75 data/kds-s3-demo-LAB_SUFFIX-channel/2026/09/03/10/CHANNEL_ID-30-000000000000000000-000000-86862066acb.gz
+   2026-09-03 22:34:24         75 data/kds-s3-demo-LAB_SUFFIX-channel/2026/09/03/10/CHANNEL_ID-33-000000000000100000-000000-86862066acb.gz
+   2026-09-03 22:36:14         75 data/kds-s3-demo-LAB_SUFFIX-channel/2026/09/03/10/CHANNEL_ID-35-000000000000200000-000000-86862066acb.gz
+   Delivered object count under data/: 4
+   Freshness window is 300s — objects appear only after that buffer.
+   ```
+
+3. Download one object and inspect it (lab uses GZIP compression).
+
+   ```bash frame="terminal"
+   KEY=$(aws s3api list-objects-v2 \
+     --bucket "$BUCKET_NAME" \
+     --prefix "data/" \
+     --query 'Contents[-1].Key' \
+     --output text)
+   aws s3 cp "s3://${BUCKET_NAME}/${KEY}" /tmp/sample.gz
+   gzip -dc /tmp/sample.gz | head
+   ```
+
+   Looks like (heartbeat producer payload):
+
+   ```json
+   {"source": "kds-s3-demo-heartbeat", "ts": 1788431723}
+   ```
+
+4. Check delivery metrics (all three dimensions required for `get-metric-statistics`).
+
+   ```bash frame="terminal"
+   aws cloudwatch get-metric-statistics \
+     --namespace AWS/Kinesis \
+     --metric-name DeliveryToS3.SuccessfulRecordCount \
+     --dimensions \
+       Name=StreamName,Value="$STREAM_NAME" \
+       Name=ChannelName,Value="$CHANNEL_NAME" \
+       Name=ChannelId,Value="$CHANNEL_ID" \
+     --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
+     --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+     --period 300 \
+     --statistics Sum
+   ```
+
+   Looks like (verified — `Sum` rising; `FailedRecordCount` stayed `0` in the same window):
+
+   ```json
+   {
+     "Label": "DeliveryToS3.SuccessfulRecordCount",
+     "Datapoints": [
+       { "Timestamp": "2026-09-03T10:30:00Z", "Sum": 3.0, "Unit": "Count" },
+       { "Timestamp": "2026-09-03T10:35:00Z", "Sum": 1.0, "Unit": "Count" }
+     ]
+   }
+   ```
+
+   Optional freshness check (same dimensions; use `Average` or `Maximum`):
+
+   ```bash frame="terminal"
+   aws cloudwatch get-metric-statistics \
+     --namespace AWS/Kinesis \
+     --metric-name DeliveryToS3.DataFreshness \
+     --dimensions \
+       Name=StreamName,Value="$STREAM_NAME" \
+       Name=ChannelName,Value="$CHANNEL_NAME" \
+       Name=ChannelId,Value="$CHANNEL_ID" \
+     --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
+     --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+     --period 300 \
+     --statistics Average Maximum
+   ```
+
+</Steps>
+
+## Verify
+
+| Signal | Healthy | Problem |
+| ------ | ------- | ------- |
+| Objects under `data/` | Present after freshness wait | Empty — check channel status, backfill mistake, or IAM |
+| `DeliveryToS3.SuccessfulRecordCount` | Rising | Flat — producer timing, permissions, or missing dimensions |
+| `DeliveryToS3.FailedRecordCount` | Near zero | Rising — check error prefix / logs |
+| `DeliveryToS3.DataFreshness` | Stable / not climbing | Rising — delivery falling behind |
+
+<Aside type="tip" title="Empty CloudWatch datapoints">
+  `list-metrics` can show the metric when you filter by one dimension, but
+  `get-metric-statistics` needs **StreamName + ChannelName + ChannelId** together. That is the
+  documented pattern for targeting a specific delivery.
+</Aside>
+
+## References
+
+- [Monitoring data delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-monitoring.html)
+- [S3 general purpose delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3.html)
+- [Output key template](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-key-template.html)

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img">
+  <defs>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1" fill="#22d3ee" fill-opacity="0.12"/>
+    </pattern>
+    <radialGradient id="glow" cx="20%" cy="0%" r="70%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.18"/>
+      <stop offset="60%" stop-color="#071014" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#071014"/>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <text x="72" y="120" fill="#22d3ee" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="26" font-weight="700" letter-spacing="0.06em">KINESIS DATA STREAMS</text>
+  <text x="72" y="220" fill="#eef8fa" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="54" font-weight="800">Deliver streams to</text>
+  <text x="72" y="290" fill="#eef8fa" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="54" font-weight="800">general purpose S3</text>
+  <text x="72" y="380" fill="#b7cdd4" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="26">Stream · channel · produce · verify · tear down</text>
+  <rect x="72" y="440" width="240" height="52" rx="26" fill="#22d3ee"/>
+  <text x="192" y="474" text-anchor="middle" fill="#04222a" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="22" font-weight="700">Start the lab</text>
+  <text x="72" y="560" fill="#5a7a86" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="20">kinesis-s3-delivery-walkthrough.johna.kiwi</text>
+</svg>

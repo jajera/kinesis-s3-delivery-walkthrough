@@ -1,0 +1,37 @@
+{
+  "name": "kinesis-s3-delivery-walkthrough",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Guided CLI walkthrough for Kinesis Data Streams S3 delivery",
+  "scripts": {
+    "dev": "astro dev",
+    "validate": "node scripts/check-placeholders.mjs && node scripts/check-asides.mjs && node scripts/check-references.mjs",
+    "generate:og-image": "tsx scripts/generate-og-image.ts",
+    "build": "npm run generate:og-image && npm run validate && astro build",
+    "preview": "astro preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.2.4",
+    "@astrojs/starlight": "^0.41.9",
+    "astro": "^7.2.9",
+    "astro-mermaid": "^2.1.0",
+    "mermaid": "^11.6.0",
+    "sharp": "^0.35.4",
+    "starlight-image-zoom": "^0.15.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "js-yaml": "4.3.2",
+    "markdown-it": "^14.2.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

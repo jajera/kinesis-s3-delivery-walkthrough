@@ -1,0 +1,98 @@
+---
+title: Create the stream
+description: Create an On-Demand Kinesis Data Streams stream that can host an S3 delivery channel.
+sidebar:
+  label: Create the stream
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+import Tooltip from "@/components/Tooltip.astro";
+
+<Checklist
+  id="setup-stream"
+  items={[
+    "On-Demand stream exists and is ACTIVE",
+    "Stream tagged with Project=kinesis-s3-delivery-walkthrough",
+  ]}
+/>
+
+## Overview
+
+Delivery channels require <Tooltip term="on-demand-standard" label="On-Demand Standard" /> or
+<Tooltip term="on-demand-advantage" label="On-Demand Advantage" />. Provisioned streams are not
+supported. Delivery does not consume the stream's read throughput or enhanced fan-out slots.
+
+<Aside type="danger">
+  Creating a stream is billable. Prefer the lab prefix so teardown can find it.
+</Aside>
+
+## Steps
+
+<Steps>
+
+1. Create an On-Demand stream with the lab tag.
+
+   ```bash frame="terminal"
+   export AWS_PROFILE=sandbox
+   export AWS_REGION=ap-southeast-2
+   export LAB_SUFFIX=${LAB_SUFFIX:-$(date +%Y%m%d%H%M%S)}
+   export STREAM_NAME="kds-s3-demo-${LAB_SUFFIX}-stream"
+
+   aws kinesis create-stream \
+     --stream-name "$STREAM_NAME" \
+     --stream-mode-details StreamMode=ON_DEMAND \
+     --tags Project=kinesis-s3-delivery-walkthrough
+   ```
+
+   Create returns with no body when it succeeds. On CLI **2.36.38**,
+   `StreamMode` is only `ON_DEMAND` or `PROVISIONED`.
+
+   <Aside type="tip" title="Standard vs Advantage">
+     On-Demand Standard versus Advantage is an
+     <a href="https://aws.amazon.com/kinesis/data-streams/faqs/">account-level billing setting</a>,
+     not a per-stream create flag — default accounts stay on Standard. This lab uses
+     <code>ON_DEMAND</code> as shown above.
+   </Aside>
+
+   Or let the wrapper create stream, bucket, role, and channel together (it sets
+   `LAB_SUFFIX` if you have not):
+
+   ```bash frame="terminal"
+   ./scripts/demo.sh up
+   ```
+
+2. Wait until the stream is `ACTIVE`, then capture the ARN.
+
+   ```bash frame="terminal"
+   aws kinesis describe-stream-summary \
+     --stream-name "$STREAM_NAME" \
+     --query 'StreamDescriptionSummary.{Status:StreamStatus,Mode:StreamModeDetails.StreamMode,Arn:StreamARN}'
+   ```
+
+   Looks like (verified in `ap-southeast-2`, CLI **2.36.38** — first poll ~2 s after create):
+
+   ```json
+   {
+     "Status": "ACTIVE",
+     "Mode": "ON_DEMAND",
+     "Arn": "arn:aws:kinesis:ap-southeast-2:ACCOUNT_ID:stream/kds-s3-demo-LAB_SUFFIX-stream"
+   }
+   ```
+
+</Steps>
+
+## Verify
+
+| Check | Expect |
+| ----- | ------ |
+| `StreamStatus` | `ACTIVE` |
+| `StreamMode` | `ON_DEMAND` |
+| Name | starts with `kds-s3-demo-` |
+| Tag | `Project=kinesis-s3-delivery-walkthrough` |
+
+## References
+
+- [Data delivery overview](https://docs.aws.amazon.com/streams/latest/dev/data-delivery.html)
+- [Quotas and constraints](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-quotas.html)
+- [FAQs](https://aws.amazon.com/kinesis/data-streams/faqs/)

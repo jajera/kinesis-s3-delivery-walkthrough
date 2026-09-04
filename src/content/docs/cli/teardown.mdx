@@ -1,0 +1,123 @@
+---
+title: Tear down
+description: Stop the producer, delete the channel first, empty and delete the bucket, then remove the stream and roles.
+sidebar:
+  label: Tear down
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+
+<Checklist
+  id="cli-teardown"
+  items={[
+    "Producer schedule and Lambda removed",
+    "Channel deleted",
+    "Bucket emptied and deleted",
+    "Stream and roles removed",
+  ]}
+/>
+
+## Overview
+
+An active delivery continues to process records and incur charges until you delete it. Already
+delivered objects keep costing S3 storage until the bucket is emptied. Stop the always-on
+producer before deleting the channel.
+
+```text
+producer (rule → Lambda → role → log group)
+  → delete-channel → empty bucket → delete bucket
+  → delete-stream → delete delivery role
+```
+
+## Steps
+
+<Steps>
+
+1. Stop the always-on producer (if you started it), including its log group.
+
+   ```bash frame="terminal"
+   export PRODUCER_RULE="kds-s3-demo-${LAB_SUFFIX}-producer-schedule"
+   export PRODUCER_FN="kds-s3-demo-${LAB_SUFFIX}-producer"
+   export PRODUCER_ROLE="kds-s3-demo-${LAB_SUFFIX}-producer-role"
+
+   aws events remove-targets --rule "$PRODUCER_RULE" --ids 1
+   aws events delete-rule --name "$PRODUCER_RULE"
+   aws lambda delete-function --function-name "$PRODUCER_FN"
+   aws iam delete-role-policy \
+     --role-name "$PRODUCER_ROLE" \
+     --policy-name "${PRODUCER_ROLE}-kinesis"
+   aws iam delete-role --role-name "$PRODUCER_ROLE"
+   aws logs delete-log-group --log-group-name "/aws/lambda/${PRODUCER_FN}"
+   ```
+
+2. Delete the channel first.
+
+   ```bash frame="terminal"
+   aws kinesis delete-channel --channel-arn "$CHANNEL_ARN"
+   ```
+
+3. Empty and delete the destination bucket.
+
+   ```bash frame="terminal"
+   aws s3 rm "s3://${BUCKET_NAME}" --recursive
+   aws s3api delete-bucket --bucket "$BUCKET_NAME"
+   ```
+
+4. Delete the stream.
+
+   ```bash frame="terminal"
+   aws kinesis delete-stream \
+     --stream-name "$STREAM_NAME" \
+     --enforce-consumer-deletion
+   ```
+
+5. Detach the inline policy and delete the delivery role.
+
+   ```bash frame="terminal"
+   aws iam delete-role-policy \
+     --role-name "$ROLE_NAME" \
+     --policy-name "${ROLE_NAME}-s3"
+   aws iam delete-role --role-name "$ROLE_NAME"
+   ```
+
+   Or run the guarded wrapper (confirms with the lab suffix; removes producer + stack):
+
+   ```bash frame="terminal"
+   ./scripts/demo.sh down
+   ```
+
+   Looks like (verified in `ap-southeast-2`, CLI **2.36.38** — confirm with the stored
+   `LAB_SUFFIX`):
+
+   ```text
+   This will delete lab resources with prefix kds-s3-demo-LAB_SUFFIX-:
+     producer rule      kds-s3-demo-LAB_SUFFIX-producer-schedule
+     producer function  kds-s3-demo-LAB_SUFFIX-producer
+     producer role      kds-s3-demo-LAB_SUFFIX-producer-role
+     channel            arn:aws:kinesis:ap-southeast-2:ACCOUNT_ID:channel/CHANNEL_ID
+     bucket             s3://kds-s3-demo-LAB_SUFFIX-ACCOUNT_ID
+     stream             kds-s3-demo-LAB_SUFFIX-stream
+     role               kds-s3-demo-LAB_SUFFIX-role
+   Type the lab suffix 'LAB_SUFFIX' to confirm: LAB_SUFFIX
+   …
+   Teardown requested. State file removed. Confirm with the cleanup checklist.
+   ```
+
+</Steps>
+
+## Verify
+
+Sweep with the [cleanup checklist](/reference/cleanup-checklist/). Nothing with the
+`kds-s3-demo-` prefix should remain. After a successful `down`, `describe-channel` /
+`describe-stream-summary` return `ResourceNotFoundException`.
+
+<Aside type="danger">
+  Never delete a bucket or role whose name lacks the lab prefix. demo.sh refuses names outside
+  kds-s3-demo-.
+</Aside>
+
+## References
+
+- [Getting started — clean up](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-getting-started.html)
+- [Pricing](https://aws.amazon.com/kinesis/data-streams/pricing/)

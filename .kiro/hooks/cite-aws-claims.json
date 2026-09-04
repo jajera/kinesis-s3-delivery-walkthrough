@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Cite AWS claims",
+      "description": "After the agent edits a walkthrough page, remind it to ground AWS behaviour in the source lock rather than recall.",
+      "trigger": "PostFileSave",
+      "matcher": "src/content/docs/.*\\.mdx?$",
+      "action": {
+        "type": "agent",
+        "prompt": "You just edited a walkthrough page. Before moving on, check it against .kiro/steering/aws-source-lock.md: every AWS behavioural claim on the page must appear in the verified-facts list or be backed by a link in the page's References section. Anything not yet run in an account stays marked as unverified or TBD. If a claim cannot be sourced, re-read the relevant page with the aws-docs MCP server or remove the claim."
+      }
+    }
+  ]
+}
