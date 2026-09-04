@@ -2,13 +2,18 @@ import { defineConfig } from "astro/config";
 import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
 import starlightImageZoom from "starlight-image-zoom";
+import { starlightBasePath } from "starlight-base-path";
 import mermaid from "astro-mermaid";
 
-const site = "https://kinesis-s3-delivery-walkthrough.johna.kiwi";
+// Project Pages until kinesis-s3-delivery-walkthrough.johna.kiwi DNS exists.
+// Then: site → https://kinesis-s3-delivery-walkthrough.johna.kiwi, base → "/",
+// restore public/CNAME, and re-enable the Pages custom domain.
+const site = "https://jajera.github.io";
+const base = "/kinesis-s3-delivery-walkthrough/";
 
 export default defineConfig({
   site,
-  base: "/",
+  base,
   // starlight-image-zoom and astro-mermaid need the remark/rehype pipeline.
   markdown: {
     processor: unified(),
@@ -33,7 +38,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image",
-            content: `${site}/og-image.png`,
+            content: `${site}${base}og-image.png`,
           },
         },
         {
@@ -48,11 +53,11 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image",
-            content: `${site}/og-image.png`,
+            content: `${site}${base}og-image.png`,
           },
         },
       ],
-      plugins: [starlightImageZoom()],
+      plugins: [starlightBasePath(), starlightImageZoom()],
       social: [
         {
           icon: "github",

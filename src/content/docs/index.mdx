@@ -14,6 +14,46 @@ hero:
 import { Card, CardGrid, Aside } from "@astrojs/starlight/components";
 import Tooltip from "@/components/Tooltip.astro";
 
+## Why this exists
+
+Before August 2026, landing raw records from
+<Tooltip term="kds" label="Kinesis Data Streams" /> into a general purpose S3
+bucket meant building a delivery pipeline yourself — chain more serverless
+services, run a consumer application, or operate something in between. You
+owned scaling, retries, and the glue.
+
+Managed S3 general purpose delivery removes that middle tier: configure a
+<Tooltip term="channel" /> on an On-Demand stream and Kinesis Data Streams
+buffers, batches, and writes objects for you. No consumer compute to provision,
+and delivery does not consume the stream's read throughput.
+
+```mermaid
+flowchart TB
+  subgraph before["Before — you run the middle"]
+    direction TB
+    BP[Producers] --> BK[Kinesis Data Streams]
+    BK --> BM["Lambda / KCL app / other glue"]
+    BM --> BS[S3 bucket]
+  end
+  subgraph after["Now — managed delivery"]
+    direction TB
+    AP[Producers] --> AK[Kinesis Data Streams On-Demand]
+    AK --> AC[Delivery channel]
+    AC --> AS[S3 general purpose bucket]
+  end
+```
+
+| | Before | This lab |
+| --- | --- | --- |
+| Path to S3 | Stream → consumer or glue → `PutObject` | Stream → channel → S3 |
+| Who scales and retries | You | Kinesis Data Streams |
+| Stream read impact | Consumer uses shard throughput / EFO | Delivery does not consume read throughput |
+| Transform | Whatever you build | Source format only (no transform) |
+
+This page is the pain-point framing only — the lab does not recreate the
+self-managed path. Firehose remains a different product when you need its
+destinations or conversion features.
+
 ## What you will do
 
 <CardGrid>
@@ -61,6 +101,10 @@ amazon-kinesis-replay           (optional)
 
 <Aside type="caution">
   This lab creates billable AWS resources. An active channel keeps billing until you delete it.
-  AWS behaviour claims are sourced from the documentation lock but not yet verified in an
-  account — timings and screenshots land in the evidence pass.
 </Aside>
+
+## References
+
+- [Streaming tables and S3 delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery.html)
+- [Amazon S3 general purpose delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3.html)
+- [Launch announcement (29 Aug 2026)](https://aws.amazon.com/about-aws/whats-new/2026/08/kinesis/data-delivery-general-purpose-s3-buckets/)
