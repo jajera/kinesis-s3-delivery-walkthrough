@@ -1,0 +1,74 @@
+---
+title: Prerequisites
+description: Account, profile, Region, and On-Demand requirements after tooling is installed.
+sidebar:
+  label: Prerequisites
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+import Tooltip from "@/components/Tooltip.astro";
+
+<Checklist
+  id="prerequisites"
+  items={[
+    "Install tooling page completed",
+    "AWS account and sandbox profile ready",
+    "Region set to ap-southeast-2",
+    "On-Demand capacity mode understood",
+  ]}
+/>
+
+## Overview
+
+Finish [Install tooling](/install-tooling/) first. This page covers the AWS account shape and
+feature constraints before you create resources.
+
+This lab creates billable resources: an On-Demand <Tooltip term="kds" label="Kinesis Data Streams" />
+stream, a delivery <Tooltip term="channel" />, a general purpose S3 bucket, and an IAM
+<Tooltip term="service-execution-role" label="service execution role" />. An active channel keeps
+billing until you delete it.
+
+## What you need
+
+| Piece | Notes |
+| ----- | ----- |
+| Tooling | AWS CLI **≥ 2.36.35** (demo pin **2.36.38**), Java 11+, Maven, jq — see [Install tooling](/install-tooling/) |
+| AWS account | Operator credentials with permission to create streams, channels, buckets, and IAM roles |
+| Named profile | `AWS_PROFILE=sandbox` — `demo.sh` refuses an implicit account |
+| Region | Default lab Region is `ap-southeast-2` (`Kinesis+CreateChannel` available there) |
+
+## Hard requirements
+
+- The stream must use **On-Demand Standard or On-Demand Advantage**. Provisioned streams cannot
+  host a delivery channel.
+- The destination bucket must be in the **same Region** as the stream.
+- Only records written **after** the channel reaches `ACTIVE` are delivered — there is no
+  backfill.
+
+<Aside type="danger">
+  Resources are billable. Prefer a disposable account or a tight IAM boundary. Tear down with
+  `./scripts/demo.sh down` when you are done.
+</Aside>
+
+## Environment check
+
+```bash frame="terminal"
+export AWS_PROFILE=sandbox
+export AWS_REGION=ap-southeast-2
+aws sts get-caller-identity
+aws --version
+# expect aws-cli/2.36.35 or newer (demo: 2.36.38)
+```
+
+## Next
+
+Continue to the [CLI overview](/cli/).
+
+## References
+
+- [Getting started with S3 general purpose delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-getting-started.html)
+- [Data delivery overview](https://docs.aws.amazon.com/streams/latest/dev/data-delivery.html)
+- [Pricing](https://aws.amazon.com/kinesis/data-streams/pricing/)
+- [IAM permissions for data delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-iam.html)
+- [Installing the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)

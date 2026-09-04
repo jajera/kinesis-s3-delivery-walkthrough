@@ -1,0 +1,35 @@
+---
+title: Troubleshooting
+description: Symptom, diagnosis, and fix for the known failure modes in this lab.
+sidebar:
+  label: Troubleshooting
+---
+
+import Checklist from "@/components/Checklist.astro";
+
+<Checklist
+  id="ref-troubleshooting"
+  items={[
+    "Can diagnose the common failure modes",
+  ]}
+/>
+
+## Overview
+
+| Symptom | Diagnosis | Fix |
+| ------- | --------- | --- |
+| Channel create rejected / not available | Stream is provisioned | Recreate stream as On-Demand |
+| `AccessDenied` on create-channel | Missing `iam:PassRole` or lifecycle permissions | Grant `kinesis:CreateChannel`, `kinesis:AssociateStreamsWithChannel`, `iam:PassRole` |
+| Channel `FAILED` | Role, bucket Region, or KMS mismatch | Read `ChannelStatusReason`, delete channel, fix, recreate |
+| No objects after produce | Records before `ACTIVE`, or freshness wait | Confirm producer started after `ACTIVE`; wait 300–900s |
+| `AccessDenied` in delivery | IAM prefix ≠ output key template | Align `s3:PutObject` resource with template prefix, or scope to `bucket/*` |
+| Compression create error | Template missing extension placeholder | End `OutputKeyTemplate` with `!{extension}` |
+| Empty S3 immediately after produce | Freshness window | Wait; not a failure |
+| Replay flag error | Old blog used `-streamName` | Use `-streamArn` |
+
+## References
+
+- [IAM permissions for data delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-iam.html)
+- [Monitoring data delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-monitoring.html)
+- [Output key template](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-key-template.html)
+- [Quotas and constraints](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-quotas.html)

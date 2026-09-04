@@ -1,0 +1,53 @@
+---
+title: Cleanup checklist
+description: Resource-by-resource sweep to confirm nothing from the lab remains.
+sidebar:
+  label: Cleanup checklist
+---
+
+import Checklist from "@/components/Checklist.astro";
+
+<Checklist
+  id="ref-cleanup"
+  items={[
+    "No lab-prefixed resources remain",
+  ]}
+/>
+
+## Overview
+
+Run after `./scripts/demo.sh down` or a manual teardown. Every name should start with
+`kds-s3-demo-`.
+
+## Sweep
+
+```bash frame="terminal"
+export AWS_PROFILE=sandbox
+export AWS_REGION=ap-southeast-2
+export PREFIX=kds-s3-demo-
+
+aws kinesis list-streams --query "StreamNames[?starts_with(@, '${PREFIX}')]"
+aws kinesis list-channels --query "ChannelSummaries[?starts_with(ChannelName, '${PREFIX}')].ChannelName"
+aws s3api list-buckets --query "Buckets[?starts_with(Name, '${PREFIX}')].Name"
+aws iam list-roles --query "Roles[?starts_with(RoleName, '${PREFIX}')].RoleName"
+aws lambda list-functions --query "Functions[?starts_with(FunctionName, '${PREFIX}')].FunctionName"
+aws events list-rules --query "Rules[?starts_with(Name, '${PREFIX}')].Name"
+aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/${PREFIX}" \
+  --query "logGroups[].logGroupName"
+```
+
+| Resource | Gone when |
+| -------- | --------- |
+| Channel | Not listed / describe returns not found |
+| Bucket | Not listed |
+| Stream | Not listed |
+| Role | Not listed (delivery + producer) |
+| Lambda / EventBridge rule | `kds-s3-demo-*-producer` / `*-producer-schedule` gone |
+| Lambda log group | `/aws/lambda/kds-s3-demo-*-producer` gone |
+| `.lab-state.json` | Deleted locally |
+| `.lab/` | Removed locally (policy JSON, channel config, producer zip, replay clone, viz report) |
+
+## References
+
+- [Getting started — clean up](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-getting-started.html)
+- [Pricing](https://aws.amazon.com/kinesis/data-streams/pricing/)

@@ -1,0 +1,189 @@
+---
+title: Install tooling
+description: Install AWS CLI, Java, Maven, and jq before you start the walkthrough. Pin the minimum and demo AWS CLI versions.
+sidebar:
+  label: Install tooling
+---
+
+import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+
+<Checklist
+  id="install-tooling"
+  items={[
+    "AWS CLI at or above the minimum version",
+    "Channel APIs visible in aws kinesis help",
+    "Java 11+ and Maven available",
+    "jq available for demo.sh",
+  ]}
+/>
+
+## Overview
+
+Install and version-check these tools **before** [Prerequisites](/prerequisites/) and the
+walkthrough. The lab needs a current AWS CLI so `aws kinesis create-channel` exists.
+
+## Version matrix
+
+| Tool | Minimum | Demo / verified here | Why |
+| ---- | ------- | -------------------- | --- |
+| AWS CLI v2 | **2.36.35** | **2.36.38** | `create-channel` shipped in 2.36.35; 2.36.38 is the latest stable used for this guide |
+| Java | **11** | **21** (OpenJDK) | Replay sample `pom.xml` targets 11; 17/21 LTS also work |
+| Maven | 3.8+ | **3.9.6** | Builds the replay JAR |
+| jq | 1.6+ | **1.7.1** | `scripts/demo.sh` reads `.lab-state.json` |
+
+<Aside type="caution" title="Minimum AWS CLI">
+  Anything older than <strong>2.36.35</strong> will not expose
+  <code>aws kinesis create-channel</code>. This machine was on 2.36.25 before the upgrade —
+  upgrade before you continue.
+</Aside>
+
+<Aside type="tip" title="Demo pin (verified)">
+  Verified locally on 2026-09-03 against <strong>aws-cli/2.36.38</strong> with channel APIs
+  present. Looks-like blocks below are from that install.
+</Aside>
+
+## Install AWS CLI v2
+
+Follow the official [install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html).
+
+<Tabs>
+<TabItem label="Pin 2.36.38 (no sudo)">
+
+User-local install — works when you cannot write to `/usr/local`:
+
+```bash frame="terminal"
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.36.38.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+mkdir -p "$HOME/.local/bin" "$HOME/.local/share/aws-cli"
+./aws/install \
+  --bin-dir "$HOME/.local/bin" \
+  --install-dir "$HOME/.local/share/aws-cli" \
+  --update
+export PATH="$HOME/.local/bin:$PATH"
+aws --version
+```
+
+Put `export PATH="$HOME/.local/bin:$PATH"` in your shell profile so a newer system CLI cannot
+shadow it. Use `awscli-exe-linux-aarch64-2.36.38.zip` on ARM.
+
+</TabItem>
+<TabItem label="Install script">
+
+```bash frame="terminal"
+curl -fsSL https://awscli.amazonaws.com/v2/install.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
+aws --version
+```
+
+</TabItem>
+<TabItem label="System-wide update">
+
+```bash frame="terminal"
+# requires root for /usr/local installs
+sudo aws update
+# or:
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.36.38.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install --update
+aws --version
+```
+
+</TabItem>
+</Tabs>
+
+### Confirm the pin
+
+```bash frame="terminal"
+which aws
+aws --version
+```
+
+Looks like after a successful pin to **2.36.38**:
+
+```text
+~/.local/bin/aws
+aws-cli/2.36.38 Python/3.14.6 Linux/… exe/x86_64.fedora.41
+```
+
+Confirm the channel APIs exist (this is the gate that fails on older CLIs):
+
+```bash frame="terminal"
+aws kinesis help | grep channel
+```
+
+Looks like:
+
+```text
+       o create-channel
+       o delete-channel
+       o describe-channel
+       o list-channels
+       o update-channel
+```
+
+Gate check you can paste:
+
+```bash frame="terminal"
+aws --version
+# expect: aws-cli/2.36.38 …
+
+aws kinesis help | grep -E 'create-channel|describe-channel' || {
+  echo "Channel APIs missing — upgrade AWS CLI to >= 2.36.35"
+  exit 1
+}
+```
+
+## Install Java, Maven, and jq
+
+Needed for optional `./scripts/demo.sh replay`. `up` / `status` / `producer` / `down` need the
+AWS CLI and jq (`producer` also needs `zip`). Optional `viz` needs **python3** (stdlib only) to
+build the HTML report.
+
+```bash frame="terminal"
+# Fedora / RHEL-family example — use your distro equivalents
+sudo dnf install -y java-21-openjdk-devel maven jq
+```
+
+### Confirm versions
+
+```bash frame="terminal"
+java -version
+mvn -version | head -3
+jq --version
+```
+
+Looks like on this authoring host (OpenJDK 21, Maven 3.9.6, jq 1.7.1):
+
+```text
+openjdk version "21.0.9" 2025-10-21
+
+Apache Maven 3.9.6 (Red Hat 3.9.6-7)
+Maven home: /usr/share/maven
+Java version: 21.0.9, vendor: Red Hat, Inc., runtime: /usr/lib/jvm/java-21-openjdk
+
+jq-1.7.1
+```
+
+## Configure the profile
+
+```bash frame="terminal"
+aws configure --profile sandbox
+export AWS_PROFILE=sandbox
+export AWS_REGION=ap-southeast-2
+aws sts get-caller-identity
+```
+
+`demo.sh` refuses to run without both variables set, and refuses AWS CLI versions below
+**2.36.35**.
+
+## Next
+
+Continue to [Prerequisites](/prerequisites/), then the [CLI overview](/cli/).
+
+## References
+
+- [Installing or updating the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+- [Installing past releases](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-version.html)
+- [create-channel](https://docs.aws.amazon.com/cli/latest/reference/kinesis/create-channel.html)
+- [Getting started with S3 general purpose delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-getting-started.html)

@@ -1,0 +1,17 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Docs check on save",
+      "description": "Advisory placeholder, aside, and source-lock checks after the agent saves MDX or Markdown. Skips network link resolution; CI does the full pass.",
+      "trigger": "PostFileSave",
+      "matcher": "\\.(md|mdx|markdown)$",
+      "action": {
+        "type": "command",
+        "command": "bash .kiro/hooks/docs-check.sh"
+      },
+      "timeout": 60,
+      "enabled": true
+    }
+  ]
+}

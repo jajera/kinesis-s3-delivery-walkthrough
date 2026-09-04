@@ -1,0 +1,264 @@
+---
+title: Produce records
+description: Start a cheap always-on Lambda heartbeat into the stream after the channel is ACTIVE; optionally burst with amazon-kinesis-replay.
+sidebar:
+  label: Produce records
+---
+
+import { Steps, Aside, Tabs, TabItem } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+import Tooltip from "@/components/Tooltip.astro";
+
+<Checklist
+  id="cli-produce"
+  items={[
+    "Channel is ACTIVE before any producer starts",
+    "Always-on heartbeat schedule is running (or optional replay burst)",
+  ]}
+/>
+
+## Overview
+
+After the <Tooltip term="channel" /> is `ACTIVE`, feed the stream. The **default** path is a
+cheap always-on heartbeat: EventBridge → Lambda `PutRecord` every few minutes. An **optional**
+burst uses [`amazon-kinesis-replay`](https://github.com/aws-samples/amazon-kinesis-replay) for
+higher volume (NYC TLC taxi sample).
+
+There is **no backfill** — records written before `ACTIVE` never land in S3. Delivery does not
+consume the stream's read throughput.
+
+```text
+EventBridge (rate) → Lambda PutRecord → Kinesis stream → channel → S3
+                         ▲
+            optional: amazon-kinesis-replay burst
+```
+
+## Steps
+
+Reuse the same exports as [IAM and delivery](/cli/setup/iam-and-delivery/) (`LAB_SUFFIX`,
+`STREAM_ARN`, `CHANNEL_ARN`, …). Run from the **repo root**. Generated files go under
+`.lab/producer/` (gitignored).
+
+<Steps>
+
+1. Confirm the channel is `ACTIVE`.
+
+   ```bash frame="terminal"
+   aws kinesis describe-channel \
+     --channel-arn "$CHANNEL_ARN" \
+     --query 'ChannelDescription.ChannelStatus'
+   ```
+
+   Looks like:
+
+   ```text
+   "ACTIVE"
+   ```
+
+2. Start the default always-on heartbeat (or the wrapper).
+
+   <Tabs>
+   <TabItem label="demo.sh (recommended)">
+
+   ```bash frame="terminal"
+   ./scripts/demo.sh producer
+   ```
+
+   Creates a Lambda (128 MB), IAM role, and EventBridge rule
+   `rate(5 minutes)` (override with `PRODUCER_RATE='rate(1 minute)'`). Invokes once
+   immediately so you need not wait for the first schedule tick.
+
+   Looks like (verified in `ap-southeast-2`, CLI **2.36.38**):
+
+   ```text
+   Immediate invoke result: {"ok": true}
+
+   Always-on producer is running.
+     Function:  kds-s3-demo-LAB_SUFFIX-producer
+     Rule:      kds-s3-demo-LAB_SUFFIX-producer-schedule (rate(5 minutes))
+     Stream:    arn:aws:kinesis:ap-southeast-2:ACCOUNT_ID:stream/kds-s3-demo-LAB_SUFFIX-stream
+   ```
+
+   </TabItem>
+   <TabItem label="AWS CLI">
+
+   ```bash frame="terminal"
+   export PRODUCER_ROLE="kds-s3-demo-${LAB_SUFFIX}-producer-role"
+   export PRODUCER_FN="kds-s3-demo-${LAB_SUFFIX}-producer"
+   export PRODUCER_RULE="kds-s3-demo-${LAB_SUFFIX}-producer-schedule"
+   mkdir -p .lab/producer
+
+   cat > .lab/producer/trust.json <<EOF
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Principal": { "Service": "lambda.amazonaws.com" },
+       "Action": "sts:AssumeRole"
+     }]
+   }
+   EOF
+
+   cat > .lab/producer/permissions.json <<EOF
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": ["kinesis:PutRecord"],
+         "Resource": "${STREAM_ARN}"
+       },
+       {
+         "Effect": "Allow",
+         "Action": [
+           "logs:CreateLogGroup",
+           "logs:CreateLogStream",
+           "logs:PutLogEvents"
+         ],
+         "Resource": "arn:aws:logs:${AWS_REGION}:${ACCOUNT_ID}:*"
+       }
+     ]
+   }
+   EOF
+
+   aws iam create-role \
+     --role-name "$PRODUCER_ROLE" \
+     --assume-role-policy-document file://.lab/producer/trust.json \
+     --tags Key=Project,Value=kinesis-s3-delivery-walkthrough
+
+   aws iam put-role-policy \
+     --role-name "$PRODUCER_ROLE" \
+     --policy-name "${PRODUCER_ROLE}-kinesis" \
+     --policy-document file://.lab/producer/permissions.json
+
+   sleep 10
+
+   cat > .lab/producer/handler.py <<'PY'
+   import json, os, time, boto3
+   kinesis = boto3.client("kinesis")
+   STREAM_NAME = os.environ["STREAM_NAME"]
+   def handler(event, context):
+       body = {"source": "kds-s3-demo-heartbeat", "ts": int(time.time())}
+       kinesis.put_record(
+           StreamName=STREAM_NAME,
+           Data=json.dumps(body).encode("utf-8"),
+           PartitionKey="heartbeat",
+       )
+       return {"ok": True}
+   PY
+
+   ( cd .lab/producer && zip -q function.zip handler.py )
+
+   aws lambda create-function \
+     --function-name "$PRODUCER_FN" \
+     --runtime python3.14 \
+     --role "arn:aws:iam::${ACCOUNT_ID}:role/${PRODUCER_ROLE}" \
+     --handler handler.handler \
+     --timeout 10 \
+     --memory-size 128 \
+     --zip-file fileb://.lab/producer/function.zip \
+     --environment "Variables={STREAM_NAME=${STREAM_NAME}}" \
+     --tags Project=kinesis-s3-delivery-walkthrough
+
+   aws events put-rule \
+     --name "$PRODUCER_RULE" \
+     --schedule-expression "${PRODUCER_RATE:-rate(5 minutes)}" \
+     --state ENABLED \
+     --tags Key=Project,Value=kinesis-s3-delivery-walkthrough
+
+   export PRODUCER_FN_ARN=$(aws lambda get-function \
+     --function-name "$PRODUCER_FN" --query Configuration.FunctionArn --output text)
+   export PRODUCER_RULE_ARN=$(aws events describe-rule \
+     --name "$PRODUCER_RULE" --query Arn --output text)
+
+   aws lambda add-permission \
+     --function-name "$PRODUCER_FN" \
+     --statement-id "${PRODUCER_RULE}-invoke" \
+     --action lambda:InvokeFunction \
+     --principal events.amazonaws.com \
+     --source-arn "$PRODUCER_RULE_ARN"
+
+   cat > .lab/producer/targets.json <<EOF
+   [{"Id": "1", "Arn": "${PRODUCER_FN_ARN}"}]
+   EOF
+
+   aws events put-targets \
+     --rule "$PRODUCER_RULE" \
+     --targets file://.lab/producer/targets.json
+
+   # Wait until State=Active, then smoke-test once
+   aws lambda invoke --function-name "$PRODUCER_FN" --payload '{}' .lab/producer/invoke-out.json
+   cat .lab/producer/invoke-out.json
+   ```
+
+   Looks like:
+
+   ```json
+   {"ok": true}
+   ```
+
+   </TabItem>
+   </Tabs>
+
+3. Optional — burst higher volume with the replay JAR (does not replace the heartbeat).
+
+   ```bash frame="terminal"
+   ./scripts/demo.sh replay
+   ```
+
+   Or manually (takes **`-streamArn`**, not `-streamName`):
+
+   ```bash frame="terminal"
+   java -jar amazon-kinesis-replay.jar \
+     -streamArn "$STREAM_ARN" \
+     -speedup 60
+   ```
+
+   Stop the JAR with Ctrl+C when you have enough traffic. Leave the schedule running until
+   [tear down](/cli/teardown/).
+
+</Steps>
+
+## Verify
+
+```bash frame="terminal"
+aws events describe-rule \
+  --name "kds-s3-demo-${LAB_SUFFIX}-producer-schedule" \
+  --query '{Name:Name,State:State,Schedule:ScheduleExpression}'
+
+aws logs tail "/aws/lambda/kds-s3-demo-${LAB_SUFFIX}-producer" --since 15m --format short
+```
+
+Looks like (verified):
+
+```json
+{
+  "Name": "kds-s3-demo-LAB_SUFFIX-producer-schedule",
+  "State": "ENABLED",
+  "Schedule": "rate(5 minutes)"
+}
+```
+
+```text
+INIT_START Runtime Version: python:3.14.…
+START RequestId: …
+END RequestId: …
+REPORT RequestId: … Duration: … Memory Size: 128 MB …
+```
+
+Objects in S3 appear only after the
+<Tooltip term="data-freshness" label="freshness window" /> (default 300 seconds). Continue to
+[Verify in S3](/cli/verify-s3/).
+
+<Aside type="caution">
+  Checking S3 immediately after the first put looks like a failure. Wait at least
+  DataFreshnessInSeconds. The heartbeat is tiny — expect sparse objects, not a flood.
+</Aside>
+
+## References
+
+- [Data delivery overview](https://docs.aws.amazon.com/streams/latest/dev/data-delivery.html)
+- [PutRecord](https://docs.aws.amazon.com/kinesis/latest/APIReference/API_PutRecord.html)
+- [Schedule expressions for EventBridge](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-scheduled-rule-pattern.html)
+- [amazon-kinesis-replay](https://github.com/aws-samples/amazon-kinesis-replay)
+- [NYC TLC trip records](https://registry.opendata.aws/nyc-tlc-trip-records-pds/)

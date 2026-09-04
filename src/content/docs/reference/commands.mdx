@@ -1,0 +1,125 @@
+---
+title: Commands
+description: Every AWS CLI command used in the lab, in order.
+sidebar:
+  label: Commands
+---
+
+import Checklist from "@/components/Checklist.astro";
+
+<Checklist
+  id="ref-commands"
+  items={[
+    "Can find any lab command from one page",
+  ]}
+/>
+
+## Overview
+
+Copy-paste reference. Prefer the walkthrough pages for context; use this page to find a flag
+quickly.
+
+Define the lab suffix once (see [CLI overview](/cli/#lab-suffix-lab_suffix)):
+
+```bash frame="terminal"
+export AWS_PROFILE=sandbox
+export AWS_REGION=ap-southeast-2
+export LAB_SUFFIX=${LAB_SUFFIX:-$(date +%Y%m%d%H%M%S)}
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export STREAM_NAME="kds-s3-demo-${LAB_SUFFIX}-stream"
+export BUCKET_NAME="kds-s3-demo-${LAB_SUFFIX}-${ACCOUNT_ID}"
+export ROLE_NAME="kds-s3-demo-${LAB_SUFFIX}-role"
+export CHANNEL_NAME="kds-s3-demo-${LAB_SUFFIX}-channel"
+mkdir -p .lab
+```
+
+Policy and channel JSON live under `.lab/` (gitignored). Write them with the walkthrough page
+or `./scripts/demo.sh up`.
+
+## Setup
+
+```bash frame="terminal"
+aws kinesis create-stream \
+  --stream-name "$STREAM_NAME" \
+  --stream-mode-details StreamMode=ON_DEMAND \
+  --tags Project=kinesis-s3-delivery-walkthrough
+
+aws s3api create-bucket \
+  --bucket "$BUCKET_NAME" \
+  --create-bucket-configuration "LocationConstraint=${AWS_REGION}"
+
+aws iam create-role \
+  --role-name "$ROLE_NAME" \
+  --assume-role-policy-document file://.lab/trust-policy.json
+
+aws iam put-role-policy \
+  --role-name "$ROLE_NAME" \
+  --policy-name "${ROLE_NAME}-s3" \
+  --policy-document file://.lab/permissions-policy.json
+
+aws kinesis create-channel \
+  --channel-name "$CHANNEL_NAME" \
+  --service-execution-role-arn "arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}" \
+  --stream-configuration-list file://.lab/stream-config.json \
+  --s3-destination-configuration file://.lab/s3-destination.json \
+  --tags Project=kinesis-s3-delivery-walkthrough
+```
+
+## Observe
+
+```bash frame="terminal"
+aws kinesis describe-stream-summary --stream-name "$STREAM_NAME"
+aws kinesis describe-channel --channel-arn "$CHANNEL_ARN"
+aws s3 ls "s3://${BUCKET_NAME}/data/" --recursive
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/Kinesis \
+  --metric-name DeliveryToS3.SuccessfulRecordCount \
+  --dimensions \
+    Name=StreamName,Value="$STREAM_NAME" \
+    Name=ChannelName,Value="$CHANNEL_NAME" \
+    Name=ChannelId,Value="$CHANNEL_ID" \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
+  --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --period 300 \
+  --statistics Sum
+```
+
+## Replay (optional burst)
+
+```bash frame="terminal"
+java -jar amazon-kinesis-replay.jar \
+  -streamArn "$STREAM_ARN" \
+  -speedup 60
+```
+
+## Tear down
+
+```bash frame="terminal"
+aws events remove-targets --rule "kds-s3-demo-${LAB_SUFFIX}-producer-schedule" --ids 1
+aws events delete-rule --name "kds-s3-demo-${LAB_SUFFIX}-producer-schedule"
+aws lambda delete-function --function-name "kds-s3-demo-${LAB_SUFFIX}-producer"
+aws iam delete-role-policy \
+  --role-name "kds-s3-demo-${LAB_SUFFIX}-producer-role" \
+  --policy-name "kds-s3-demo-${LAB_SUFFIX}-producer-role-kinesis"
+aws iam delete-role --role-name "kds-s3-demo-${LAB_SUFFIX}-producer-role"
+aws logs delete-log-group \
+  --log-group-name "/aws/lambda/kds-s3-demo-${LAB_SUFFIX}-producer"
+
+aws kinesis delete-channel --channel-arn "$CHANNEL_ARN"
+aws s3 rm "s3://${BUCKET_NAME}" --recursive
+aws s3api delete-bucket --bucket "$BUCKET_NAME"
+aws kinesis delete-stream --stream-name "$STREAM_NAME" --enforce-consumer-deletion
+aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "${ROLE_NAME}-s3"
+aws iam delete-role --role-name "$ROLE_NAME"
+```
+
+## Wrapper
+
+```bash frame="terminal"
+./scripts/demo.sh up|status|producer|replay|viz|down
+```
+
+## References
+
+- [create-channel](https://docs.aws.amazon.com/cli/latest/reference/kinesis/create-channel.html)
+- [Getting started](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-getting-started.html)

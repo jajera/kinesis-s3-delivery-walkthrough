@@ -1,0 +1,108 @@
+---
+title: CLI walkthrough
+description: Reading order and demo.sh cheat sheet for the Kinesis S3 delivery lab.
+sidebar:
+  label: CLI overview
+---
+
+import { Aside, LinkCard, CardGrid } from "@astrojs/starlight/components";
+import Checklist from "@/components/Checklist.astro";
+
+<Checklist
+  id="cli-overview"
+  items={[
+    "Know the reading order",
+    "Know the demo.sh subcommands",
+  ]}
+/>
+
+## Overview
+
+Work the pages in order. Each page shows the AWS CLI first, then the matching
+`scripts/demo.sh` subcommand. The script echoes every command before it runs — it teaches, it
+does not hide.
+
+## Reading order
+
+1. [Install tooling](/install-tooling/) — AWS CLI minimum and demo pin
+2. [Prerequisites](/prerequisites/) — account, profile, Region
+3. Then the walkthrough pages below
+
+<CardGrid>
+  <LinkCard title="1. Create the stream" href="/cli/setup/stream/" />
+  <LinkCard title="2. Create the bucket" href="/cli/setup/bucket/" />
+  <LinkCard title="3. IAM and delivery" href="/cli/setup/iam-and-delivery/" />
+  <LinkCard title="4. Produce records" href="/cli/produce/" />
+  <LinkCard title="5. Verify in S3" href="/cli/verify-s3/" />
+  <LinkCard title="6. Visualize (optional)" href="/cli/visualize/" />
+  <LinkCard title="7. Tear down" href="/cli/teardown/" />
+</CardGrid>
+
+## Lab suffix (`LAB_SUFFIX`)
+
+Every resource name includes a short unique suffix so `down` only touches this lab run.
+
+| Item | Value |
+| ---- | ----- |
+| Env var | `LAB_SUFFIX` |
+| Used in names | `kds-s3-demo-${LAB_SUFFIX}-stream`, `…-channel`, `…-role`, bucket `kds-s3-demo-${LAB_SUFFIX}-${ACCOUNT_ID}` |
+| If unset for `demo.sh up` | Auto-set to `$(date +%Y%m%d%H%M%S)` and stored in `.lab-state.json` |
+| Manual CLI pages | You **must** export it yourself before copying commands |
+
+```bash frame="terminal"
+export AWS_PROFILE=sandbox
+export AWS_REGION=ap-southeast-2
+# pick one durable value for this run, or generate:
+export LAB_SUFFIX=$(date +%Y%m%d%H%M%S)
+# example result: 20260903080512
+```
+
+In code samples, `$LAB_SUFFIX` is that value — not the literal string `SUFFIX`.
+
+## `demo.sh` cheat sheet
+
+```bash frame="terminal"
+export AWS_PROFILE=sandbox
+export AWS_REGION=ap-southeast-2
+# optional — omit to let up generate one:
+# export LAB_SUFFIX=$(date +%Y%m%d%H%M%S)
+
+./scripts/demo.sh up         # bucket, stream, role, channel → ACTIVE
+./scripts/demo.sh status     # read-only
+./scripts/demo.sh producer   # always-on EventBridge → Lambda PutRecord
+./scripts/demo.sh replay     # optional high-volume burst (-streamArn)
+./scripts/demo.sh viz        # HTML delivery report → .lab/viz/report.html
+./scripts/demo.sh down       # asks you to type LAB_SUFFIX to confirm
+```
+
+| Subcommand | Mutates? | Notes |
+| ---------- | -------- | ----- |
+| `up` | yes | Sets `LAB_SUFFIX` if missing; writes `.lab-state.json` |
+| `status` | no | Safe any time |
+| `producer` | yes | Always-on heartbeat; start only after channel `ACTIVE` |
+| `replay` | writes to stream | Optional burst; JAR only, no AWS producer resources |
+| `viz` | no | Builds branded HTML report; opens browser when available |
+| `down` | yes | Confirms by typing the stored `LAB_SUFFIX`; removes producer too |
+
+<Aside type="caution">
+  Authoring agents must not run mutating AWS CLI calls. Operators set
+  <code>KDS_LAB_ALLOW_AWS=1</code> deliberately for a live lab run.
+</Aside>
+
+## Conventions
+
+| Convention | Value |
+| ---------- | ----- |
+| Profile | `AWS_PROFILE=sandbox` |
+| Suffix | `LAB_SUFFIX` (timestamp or your choice) |
+| Name prefix | `kds-s3-demo-${LAB_SUFFIX}-…` |
+| Tag | `Project=kinesis-s3-delivery-walkthrough` |
+| Default Region | `ap-southeast-2` |
+| AWS CLI | Minimum **2.36.35**, demo pin **2.36.38** |
+| Local artifacts | `.lab/` (gitignored) — policy JSON, channel config, producer zip, replay clone, viz report |
+| Lab state | `.lab-state.json` (gitignored) — written by `demo.sh` |
+
+## References
+
+- [Getting started with S3 general purpose delivery](https://docs.aws.amazon.com/streams/latest/dev/data-delivery-s3-getting-started.html)
+- [create-channel](https://docs.aws.amazon.com/cli/latest/reference/kinesis/create-channel.html)

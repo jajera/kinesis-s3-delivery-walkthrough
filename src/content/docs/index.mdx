@@ -1,0 +1,66 @@
+---
+title: Kinesis S3 Delivery Walkthrough
+description: Guided CLI lab that delivers Amazon Kinesis Data Streams records to a general purpose Amazon S3 bucket, then tears everything down.
+template: splash
+hero:
+  tagline: Stand up an On-Demand stream and an S3 delivery channel, feed it with a cheap always-on producer (optional taxi replay burst), verify objects in S3, then tear it all down.
+  actions:
+    - text: Get Started
+      link: /install-tooling/
+      icon: right-arrow
+      variant: primary
+---
+
+import { Card, CardGrid, Aside } from "@astrojs/starlight/components";
+import Tooltip from "@/components/Tooltip.astro";
+
+## What you will do
+
+<CardGrid>
+  <Card title="Create the stream and channel" icon="rocket">
+    On-Demand <Tooltip term="kds" label="Kinesis Data Streams" /> plus a
+    <Tooltip term="channel" /> that writes to a same-Region S3 bucket.
+  </Card>
+  <Card title="Produce records" icon="seti:clock">
+    Default: EventBridge → Lambda heartbeat. Optional burst with
+    <code>amazon-kinesis-replay</code> after the channel is <code>ACTIVE</code>.
+  </Card>
+  <Card title="Verify delivery" icon="approve-check">
+    Wait out the <Tooltip term="data-freshness" label="freshness window" />,
+    list objects, and check <code>DeliveryToS3.*</code> metrics.
+  </Card>
+  <Card title="Tear down cleanly" icon="close">
+    Stop the producer, delete the channel first, empty the bucket, then remove
+    the stream and roles.
+  </Card>
+</CardGrid>
+
+```text
+EventBridge → Lambda PutRecord  (default)
+amazon-kinesis-replay           (optional)
+        │
+        ▼
+  Kinesis stream (On-Demand)
+        │
+        ▼
+  Delivery channel  ──►  S3 general purpose bucket
+        │
+        └── optional DLQ / error prefix
+```
+
+| Expectation | Notes |
+| ----------- | ----- |
+| Lab length | Target 15–20 minutes (measured in the evidence pass) |
+| First S3 object | At least `DataFreshnessInSeconds` after produce (default 300s) |
+| Cost | Billable until channel and objects are deleted |
+
+<Aside type="note" title="Evidence TODO">
+  Replace the ASCII sketch with a draw.io architecture diagram using official AWS icons from
+  https://jajera.github.io/aws-icons/
+</Aside>
+
+<Aside type="caution">
+  This lab creates billable AWS resources. An active channel keeps billing until you delete it.
+  AWS behaviour claims are sourced from the documentation lock but not yet verified in an
+  account — timings and screenshots land in the evidence pass.
+</Aside>
