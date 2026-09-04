@@ -11,8 +11,9 @@ walkthrough: stand up a stream and a delivery channel, feed it with a cheap sche
 
 Phases 0–5 are done. A lab run in `ap-southeast-2` verified setup → heartbeat producer → S3 objects →
 CloudWatch `DeliveryToS3.*` (all three dimensions) → HTML report → clean teardown (task 6.8).
-Remaining Phase 6/7 work: architecture diagram, demo assembly, Source_Lock TBDs, Pages deploy, and
-the hub entry. See
+Remaining Phase 6/7 work: architecture diagram, demo assembly, Source_Lock TBDs, johna.kiwi DNS
+cutover, and the hub entry. Live site (project Pages base path):
+https://jajera.github.io/kinesis-s3-delivery-walkthrough/. See
 [`.kiro/specs/kinesis-s3-delivery-walkthrough/tasks.md`](.kiro/specs/kinesis-s3-delivery-walkthrough/tasks.md).
 
 ```bash

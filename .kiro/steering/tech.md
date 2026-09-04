@@ -13,7 +13,12 @@ Astro + `@astrojs/starlight`.
 - Sidebar defined in `astro.config.mjs` — never encode order in filenames
 - `astro-mermaid` for flow and sequence diagrams
 - `starlight-image-zoom` so screenshots stay readable inline
+- `starlight-base-path` so root-relative MDX links honour Astro `base`
 - GitHub Pages deploy via the `actionsforge` reusable workflows
+- Until `kinesis-s3-delivery-walkthrough.johna.kiwi` DNS exists, `site` is
+  `https://jajera.github.io` and `base` is `/kinesis-s3-delivery-walkthrough/`
+  (no `public/CNAME`). Custom-domain cutover: DNS CNAME → `jajera.github.io`,
+  restore `public/CNAME`, set `site` to the johna.kiwi URL and `base` to `/`.
 
 ## Commands
 
