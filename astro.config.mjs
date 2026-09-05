@@ -5,11 +5,9 @@ import starlightImageZoom from "starlight-image-zoom";
 import { starlightBasePath } from "starlight-base-path";
 import mermaid from "astro-mermaid";
 
-// Project Pages until kinesis-s3-delivery-walkthrough.johna.kiwi DNS exists.
-// Then: site → https://kinesis-s3-delivery-walkthrough.johna.kiwi, base → "/",
-// restore public/CNAME, and re-enable the Pages custom domain.
-const site = "https://jajera.github.io";
-const base = "/kinesis-s3-delivery-walkthrough/";
+// Custom domain root: https://kinesis-s3-delivery-walkthrough.johna.kiwi
+const site = "https://kinesis-s3-delivery-walkthrough.johna.kiwi";
+const base = "/";
 
 export default defineConfig({
   site,
